@@ -1,0 +1,151 @@
+---
+title: "Infosys 722, Data Simulation"
+author: "Michael Gerlikhman"
+date: "01/04/2020"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+#Loading data
+
+library(dplyr)
+data <- read.csv("finaldata_201809.csv",header = T)
+set.seed(20)
+```
+
+
+```{r}
+#Filtering selecting columns of interest
+dat <- data[c(1,3)]
+```
+
+
+```{r}
+#Simulating gender categorical based on crash type
+
+dat$Sex <- sapply(X = dat$CRASH_SEV, FUN = function(t) 
+                  if(t == "F"){sample(c("Female","Male"), 1, replace=TRUE, prob = c(0.264, 0.736))}
+                  else if(t == "S"){sample(c("Female","Male"), 1, replace=TRUE, prob = c(0.415, 0.585))}
+                  else {sample(c("Female","Male"), 1, replace=TRUE, prob = c(0.4, 0.6))})
+
+
+#Simulating age based on gender
+
+dat$Age <- sapply(X = dat$Sex, FUN = function(t) 
+                  ifelse(test = (t == "Male"), yes = 
+                           sample(c("15-19","20-24","25-29","30-34","35-39","40-44","45-49","50-54","55-59","60-64","65-69","70-74","75-79","80+"),1,replace=TRUE, 
+                            prob = c(0.102, 0.158, 0.114, 0.072, 0.076, 0.088, 0.084, 0.058, 0.058, 0.068, 0.038, 0.034, 0.012, 0.038)),
+                                                no = 
+                           sample(c("15-19","20-24","25-29","30-34","35-39","40-44","45-49","50-54","55-59","60-64","65-69","70-74","75-79","80+"), 1, replace=TRUE, 
+                            prob = c(0.129, 0.083, 0.129, 0.083, 0.106, 0.072, 0.061, 0.061, 0.083, 0.034, 0.061, 0.023, 0.011, 0.072))))
+```
+
+
+```{r}
+#Simulating DUI probability for Males
+
+dat$DUImp[dat$Sex == "Male" & dat$Age == "15-19"] <- 0.174
+dat$DUImp[dat$Sex == "Male" & dat$Age == "20-24"] <- 0.213
+dat$DUImp[dat$Sex == "Male" & dat$Age == "25-29"] <- 0.153 
+dat$DUImp[dat$Sex == "Male" & dat$Age == "30-34"] <- 0.106
+dat$DUImp[dat$Sex == "Male" & dat$Age == "35-39"] <- 0.089
+dat$DUImp[dat$Sex == "Male" & dat$Age == "40-44"] <- 0.082
+dat$DUImp[dat$Sex == "Male" & dat$Age == "45-49"] <- 0.068
+dat$DUImp[dat$Sex == "Male" & dat$Age == "50-54"] <- 0.049
+dat$DUImp[dat$Sex == "Male" & dat$Age == "55-59"] <- 0.032
+dat$DUImp[dat$Sex == "Male" & dat$Age == "60-64" | 
+          dat$Sex == "Male" & dat$Age == "65-69" | 
+          dat$Sex == "Male" & dat$Age == "70-74" | 
+          dat$Sex == "Male" &  dat$Age == "75-79"| 
+          dat$Sex == "Male" &  dat$Age == "80+"] <- 0.034
+  
+```
+
+```{r}
+#Simulating DUI probability for Females
+
+dat$DUIfp[dat$Sex == "Female" & dat$Age == "15-19"] <- 0.178
+dat$DUIfp[dat$Sex == "Female" & dat$Age == "20-24"] <- 0.193
+dat$DUIfp[dat$Sex == "Female" & dat$Age == "25-29"] <- 0.144 
+dat$DUIfp[dat$Sex == "Female" & dat$Age == "30-34"] <- 0.108
+dat$DUIfp[dat$Sex == "Female" & dat$Age == "35-39"] <- 0.101
+dat$DUIfp[dat$Sex == "Female" & dat$Age == "40-44"] <- 0.096
+dat$DUIfp[dat$Sex == "Female" & dat$Age == "45-49"] <- 0.078
+dat$DUIfp[dat$Sex == "Female" & dat$Age == "50-54"] <- 0.049
+dat$DUIfp[dat$Sex == "Female" & dat$Age == "55-59"] <- 0.026
+dat$DUIfp[dat$Sex == "Female" & dat$Age == "60-64" | 
+          dat$Sex == "Female" & dat$Age == "65-69" | 
+          dat$Sex == "Female" & dat$Age == "70-74" | 
+          dat$Sex == "Female" & dat$Age == "75-79" | 
+          dat$Sex == "Female" & dat$Age == "80+"] <- 0.022
+```
+
+
+```{r}
+#Modeling the effects of the year on DUI probability
+
+year <- c(2006:2016) 
+offenders <- c(27520,31068,34397,34791,31457,30406,26761,23906,20185,18096,18049)
+change <- c(0.1142011072,0.09678169608,0.0113247679,-0.1059859491,-0.03456554627,-0.1362056724,-0.1194260855,-0.1843448105,-0.1154398762,-0.002604022384,0)
+datyear <- data.frame(year,offenders,change)
+#scatter.smooth(x = datyear$year, y= datyear$offenders)
+plot(year,change)
+fit <- lm(year ~ change, data= datyear)
+abline(fit, col="red")
+summary(fit)
+
+```
+
+
+```{r}
+#Adjustment value based on year
+
+dat$Yearadj <- (0.1 - ((dat$CRASH_YEAR - 2000) * 0.01))  
+```
+
+```{r}
+#Generating DUI probabilities with yearly adjustment
+
+dat$DUImpa <- (dat$DUImp + (dat$Yearadj * dat$DUImp)) 
+dat$DUIfpa <- (dat$DUIfp + (dat$Yearadj * dat$DUIfp))
+```
+
+```{r}
+#Combining columns
+
+dat$DUIP <- dat$DUImpa
+dat$DUIP[!is.na(dat$DUIfpa)] <- dat$DUIfpa[!is.na(dat$DUIfpa)]
+
+```
+
+```{r}
+dat$DUIP[dat$CRASH_SEV == "F"] <- dat$DUIP * 4
+dat$DUIP[dat$CRASH_SEV == "S"] <- dat$DUIP * 3
+dat$DUIP[dat$CRASH_SEV != "F" | dat$CRASH_SEV != "S"] <- dat$DUIP * 0.7
+dat$DUIP[dat$DUIP >= 1] <- 0.95
+
+```
+
+
+```{r}
+#Creating a DUI label based on DUIP
+
+dat$DUI <- sapply(dat$DUIP, FUN = function(x) sample(c("T","F"), 1, prob = c(x,1-x)))
+```
+
+
+```{r}
+#Removing temp columns and saving the file
+
+dat$DUImp <- NULL
+dat$DUIfp <- NULL
+dat$Yearadj <- NULL
+dat$DUImpa <- NULL
+dat$DUIfpa <- NULL
+dat$DUIP <- NULL
+
+
+write.csv(dat, file = "fake.csv")
+```
+
